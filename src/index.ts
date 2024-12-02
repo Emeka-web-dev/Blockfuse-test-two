@@ -1,55 +1,44 @@
-import express from "express";
-import http from "http";
-import { Server } from "socket.io";
-import { BaseEvent, EventType } from "./types/events";
+import { BaseEvent, EventType, UserLoginEvent } from "./types/events";
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*", // Adjust in production
-    methods: ["GET", "POST"],
-  },
-});
-
-io.on("connection", (socket) => {
-  console.log("New client connected:", socket.id);
-
-  // Listen for each specific event type
-  Object.values(EventType).forEach((eventType) => {
-    socket.on(eventType, async (event: BaseEvent) => {
-      console.log("socket on");
-    });
-  });
-
-  // Listen for chat messages
-  socket.on("chat_message", (message) => {
-    console.log("Received message:", message);
-    // Broadcast the message to all connected clients
-    io.emit("chat_message", message);
-  });
-
-  // Retrieve recent events for a specific type
-  socket.on(
-    "get_recent_events",
-    async (eventType: EventType, limit?: number) => {
-      try {
-        socket.emit("recent_events");
-      } catch (error) {
-        socket.emit("server_error", {
-          message: "Failed to retrieve events",
-          error: String(error),
-        });
-      }
+export class ValidationMiddleware {
+  static validateEvent(event: BaseEvent): boolean {
+    // Basic validation checks
+    if (!event.type || !Object.values(EventType).includes(event.type)) {
+      return false;
     }
-  );
 
-  socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
-  });
-});
+    if (!event.timestamp || event.timestamp > Date.now()) {
+      return false;
+    }
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+    if (!event.clientId || event.clientId.trim() === "") {
+      return false;
+    }
+
+    return true;
+  }
+
+  static validateSpecificEvent(event: BaseEvent): boolean {
+    switch (event.type) {
+      case EventType.USER_LOGIN:
+        return this.validateUserLoginEvent(event);
+      case EventType.DEVICE_STATUS:
+        return this.validateUserLoginEvent(event);
+      case EventType.SENSOR_DATA:
+        return this.validateSpecificEvent(event);
+      default:
+        return false;
+    }
+  }
+
+  private static validateUserLoginEvent(event: BaseEvent): boolean {
+    const loginEvent = event as UserLoginEvent;
+    return (
+      !!loginEvent.username &&
+      loginEvent.success !== undefined &&
+      !!loginEvent.ipAddress
+    );
+  }
+
+  // Similar validation methods for other event types...
+}
